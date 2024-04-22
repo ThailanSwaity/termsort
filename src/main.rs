@@ -1,11 +1,13 @@
 use crossterm::{
-    cursor, style,
+    cursor,
+    event::{poll, read, Event, KeyCode},
+    style,
     terminal::{self, size},
     ExecutableCommand, QueueableCommand,
 };
 use rand::Rng;
 use std::io::{stdout, Stdout, Write};
-use std::{thread, time};
+use std::time;
 
 fn main() {
     let (cols, rows) = size().unwrap();
@@ -15,57 +17,81 @@ fn main() {
     terminal::enable_raw_mode().unwrap();
     stdout.execute(cursor::Hide).unwrap();
 
-    // Testing out this method because it's neater than just putting drawing code directly inside
-    // of a regular sorting algorithm
-    let data = create_data(rows, cols);
-    let mut bubble_sort_stepper = BubbleSort::init(data);
+    loop {
+        // Testing out this method because it's neater than just putting drawing code directly inside
+        // of a regular sorting algorithm
+        let data = create_data(rows, cols);
+        let mut bubble_sort_stepper = BubbleSort::init(data);
 
-    while !bubble_sort_stepper.has_completed() {
-        bubble_sort_stepper.step();
+        while !bubble_sort_stepper.has_completed() {
+            bubble_sort_stepper.step();
 
-        stdout
-            .execute(terminal::Clear(terminal::ClearType::All))
-            .unwrap();
-        queue_data_draw(&mut stdout, &bubble_sort_stepper.data, rows);
-        stdout.flush().unwrap();
-        thread::sleep(time::Duration::from_millis(50));
+            stdout
+                .execute(terminal::Clear(terminal::ClearType::All))
+                .unwrap();
+            queue_data_draw(&mut stdout, &bubble_sort_stepper.data, rows);
+            stdout.flush().unwrap();
+
+            if blocking_poll_for_cntrlc(time::Duration::from_millis(25)) {
+                stdout.queue(cursor::MoveTo(0, rows)).unwrap();
+                stdout.flush().unwrap();
+                terminal::disable_raw_mode().unwrap();
+                stdout.execute(cursor::Show).unwrap();
+                return;
+            }
+            if blocking_poll_for_key(time::Duration::from_millis(25), KeyCode::Char('n')) {
+                break;
+            }
+        }
+
+        let data = create_data(rows, cols);
+        let mut selection_sort_stepper = SelectionSort::init(data);
+
+        while !selection_sort_stepper.has_completed() {
+            selection_sort_stepper.step();
+
+            stdout
+                .execute(terminal::Clear(terminal::ClearType::All))
+                .unwrap();
+            queue_data_draw(&mut stdout, &selection_sort_stepper.data, rows);
+            stdout.flush().unwrap();
+
+            if blocking_poll_for_cntrlc(time::Duration::from_millis(25)) {
+                stdout.queue(cursor::MoveTo(0, rows)).unwrap();
+                stdout.flush().unwrap();
+                terminal::disable_raw_mode().unwrap();
+                stdout.execute(cursor::Show).unwrap();
+                return;
+            }
+            if blocking_poll_for_key(time::Duration::from_millis(25), KeyCode::Char('n')) {
+                break;
+            }
+        }
+
+        let data = create_data(rows, cols);
+        let mut insertion_sort_stepper = InsertionSort::init(data);
+
+        while !insertion_sort_stepper.has_completed() {
+            insertion_sort_stepper.step();
+
+            stdout
+                .execute(terminal::Clear(terminal::ClearType::All))
+                .unwrap();
+            queue_data_draw(&mut stdout, &insertion_sort_stepper.data, rows);
+            stdout.flush().unwrap();
+
+            if blocking_poll_for_cntrlc(time::Duration::from_millis(8)) {
+                stdout.queue(cursor::MoveTo(0, rows)).unwrap();
+                stdout.flush().unwrap();
+                terminal::disable_raw_mode().unwrap();
+                stdout.execute(cursor::Show).unwrap();
+                return;
+            }
+            if blocking_poll_for_key(time::Duration::from_millis(8), KeyCode::Char('n')) {
+                break;
+            }
+        }
     }
-
-    let data = create_data(rows, cols);
-    let mut selection_sort_stepper = SelectionSort::init(data);
-
-    while !selection_sort_stepper.has_completed() {
-        selection_sort_stepper.step();
-
-        stdout
-            .execute(terminal::Clear(terminal::ClearType::All))
-            .unwrap();
-        queue_data_draw(&mut stdout, &selection_sort_stepper.data, rows);
-        stdout.flush().unwrap();
-        thread::sleep(time::Duration::from_millis(50));
-    }
-
-    let data = create_data(rows, cols);
-    let mut insertion_sort_stepper = InsertionSort::init(data);
-
-    while !insertion_sort_stepper.has_completed() {
-        insertion_sort_stepper.step();
-
-        stdout
-            .execute(terminal::Clear(terminal::ClearType::All))
-            .unwrap();
-        queue_data_draw(&mut stdout, &insertion_sort_stepper.data, rows);
-        stdout.flush().unwrap();
-        thread::sleep(time::Duration::from_millis(10));
-    }
-
-    // Set the cursor to the bottom of the screen for when the program exits
-    // this prevents erasure of all of the graphics
-    stdout.queue(cursor::MoveTo(0, rows)).unwrap();
-    stdout.flush().unwrap();
-
-    terminal::disable_raw_mode().unwrap();
-    stdout.execute(cursor::Show).unwrap();
 }
 
 struct BubbleSort {
@@ -203,4 +229,24 @@ fn queue_data_draw(stdout: &mut Stdout, data: &[u16], rows: u16) {
     }
 
     stdout.queue(cursor::MoveTo(0, 0)).unwrap();
+}
+
+fn blocking_poll_for_key(delay: time::Duration, key: KeyCode) -> bool {
+    if poll(delay).unwrap() {
+        return match read().unwrap() {
+            Event::Key(event) => event.code == key,
+            _ => false,
+        };
+    }
+    false
+}
+
+fn blocking_poll_for_cntrlc(delay: time::Duration) -> bool {
+    if poll(delay).unwrap() {
+        return match read().unwrap() {
+            Event::Key(event) => event.code == KeyCode::Char('c') && event.modifiers.bits() == 2,
+            _ => false,
+        };
+    }
+    false
 }
